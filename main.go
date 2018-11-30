@@ -57,11 +57,13 @@ var (
 	resyncInterval      = flag.Int("resync-interval", 30, "Informer resync interval in seconds.")
 	namespace           = flag.String("namespace", apiv1.NamespaceAll, "The Kubernetes namespace to manage. Will manage custom resource objects of the managed CRD types for the whole cluster if unset.")
 	enableWebhook       = flag.Bool("enable-webhook", false, "Whether to enable the mutating admission webhook for admitting and patching Spark pods.")
+        webhookConfigName   = flag.String("webhook-config-name", "spark-webhook-config", "The name of the MutatingWebhookConfiguration object to create.")
 	webhookCertDir      = flag.String("webhook-cert-dir", "/etc/webhook-certs", "The directory where x509 certificate and key files are stored.")
 	webhookSvcNamespace = flag.String("webhook-svc-namespace", "spark-operator", "The namespace of the Service for the webhook server.")
 	webhookSvcName      = flag.String("webhook-svc-name", "spark-webhook", "The name of the Service for the webhook server.")
 	webhookPort         = flag.Int("webhook-port", 8080, "Service port of the webhook server.")
 	enableMetrics       = flag.Bool("enable-metrics", false, "Whether to enable the metrics endpoint.")
+        webhookNamespaceSelectorLabel    = flag.String("webhook-namespaces-selector-label", "", "Labels to select the pods for patching.")
 	metricsPort         = flag.String("metrics-port", "10254", "Port for the metrics endpoint.")
 	metricsEndpoint     = flag.String("metrics-endpoint", "/metrics", "Metrics endpoint.")
 	metricsPrefix       = flag.String("metrics-prefix", "", "Prefix for the metrics.")
@@ -167,8 +169,8 @@ func main() {
 		if err != nil {
 			glog.Fatal(err)
 		}
-		if err = hook.Start(); err != nil {
-			glog.Fatal(err)
+                if err = hook.Start(*webhookConfigName, *webhookNamespaceSelectorLabel); err != nil {
+                       glog.Fatal(err)
 		}
 	}
 
@@ -182,7 +184,7 @@ func main() {
 	applicationController.Stop()
 	scheduledApplicationController.Stop()
 	if *enableWebhook {
-		if err := hook.Stop(); err != nil {
+                if err := hook.Stop(*webhookConfigName); err != nil {
 			glog.Fatal(err)
 		}
 	}
