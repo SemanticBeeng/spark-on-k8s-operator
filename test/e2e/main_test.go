@@ -30,6 +30,7 @@ var framework *operatorFramework.Framework
 func TestMain(m *testing.M) {
 	kubeconfig := flag.String("kubeconfig", "", "kube config path, e.g. $HOME/.kube/config")
 	opImage := flag.String("operator-image", "", "operator image, e.g. image:tag")
+        opImagePullPolicy := flag.String("operator-image-pullPolicy", "IfNotPresent", "pull policy, e.g. Always")
 	ns := flag.String("namespace", "spark-operator", "e2e test namespace")
 	flag.Parse()
 
@@ -39,7 +40,7 @@ func TestMain(m *testing.M) {
 	}
 
 	var err error
-	if framework, err = operatorFramework.New(*ns, *kubeconfig, *opImage); err != nil {
+	if framework, err = operatorFramework.New(*ns, *kubeconfig, *opImage, *opImagePullPolicy); err != nil {
 		log.Fatalf("failed to set up framework: %v\n", err)
 	}
 
