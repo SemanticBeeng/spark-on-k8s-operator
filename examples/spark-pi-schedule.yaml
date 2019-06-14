@@ -25,10 +25,10 @@ spec:
   template:
     type: Scala
     mode: cluster
-    image: "gcr.io/spark-operator/spark:v2.4.0"
+    image: "gcr.io/spark-operator/spark:v2.4.3"
     imagePullPolicy: Always
     mainClass: org.apache.spark.examples.SparkPi
-    mainApplicationFile: "local:///opt/spark/examples/jars/spark-examples_2.11-2.4.0.jar"
+    mainApplicationFile: "local:///opt/spark/examples/jars/spark-examples_2.11-2.4.3.jar"
     restartPolicy:
       type: Never
     driver:
@@ -36,11 +36,11 @@ spec:
       coreLimit: "200m"
       memory: "512m"
       labels:
-        version: 2.4.0
+        version: 2.4.3
       serviceAccount: spark
     executor:
       cores: 1
       instances: 1
       memory: "512m"
       labels:
-        version: 2.4.0 
+        version: 2.4.3
