@@ -1,5 +1,5 @@
 /*
-Copyright 2018 Google LLC
+Copyright 2019 Google LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+package controller
 
-package webhook
+import (
+	"github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/controller/sparkapplication"
+)
 
-// Package webhook implements a mutating admission webhook for patching Spark driver and executor pods.
-// The webhook supports mutations that are not supported by Spark on Kubernetes itself, e.g., adding an
-// OwnerReference to the driver pod for the owning SparkApplications or setting the SecurityContext.
+func init() {
+	// AddToManagerFuncs is a list of functions to create controllers and add them to a manager.
+	AddToManagerFuncs = append(AddToManagerFuncs, sparkapplication.Add)
+}
