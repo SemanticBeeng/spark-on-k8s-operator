@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 package e2e
+
 // disabling this test as polling does not capture invalidating state - needs a fix
 //
 //import (
