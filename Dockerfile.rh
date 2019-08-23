@@ -20,10 +20,10 @@
 # 1. Your Docker version is >= 18.09.3
 # 2. export DOCKER_BUILDKIT=1
 
-ARG SPARK_IMAGE=gcr.io/spark-operator/spark:v2.4.0
+ARG SPARK_IMAGE=lightbend/spark:2.1.2-OpenShift-2.4.3
 
-FROM golang:1.12.5-alpine as builder
-ARG DEP_VERSION="0.5.3"
+FROM golang:1.12.9-alpine as builder
+ARG DEP_VERSION="0.5.4"
 RUN apk add --no-cache bash git 
 ADD https://github.com/golang/dep/releases/download/v${DEP_VERSION}/dep-linux-amd64 /usr/bin/dep
 RUN chmod +x /usr/bin/dep

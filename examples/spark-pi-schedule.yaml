@@ -25,7 +25,7 @@ spec:
   template:
     type: Scala
     mode: cluster
-    image: "gcr.io/spark-operator/spark:v2.4.3"
+    image: "lightbend/spark:2.1.2-OpenShift-2.4.3-rh"
     imagePullPolicy: Always
     mainClass: org.apache.spark.examples.SparkPi
     mainApplicationFile: "local:///opt/spark/examples/jars/spark-examples_2.11-2.4.3.jar"
