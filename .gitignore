@@ -5,3 +5,6 @@ spark-operator
 .idea/
 **/*.iml
 sparkctl/sparkctl
+config/default/manager_image_patch.yaml-e
+cover.out
+

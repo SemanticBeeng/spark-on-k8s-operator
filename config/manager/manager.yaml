@@ -26,11 +26,12 @@ spec:
       - command:
         - /usr/bin/entrypoint.sh
         args:
-        - --enable-leader-election
         - --logtostderr
         - -v=4
         - -enableWebhook=true
-        image: controller:latest
+        image: lightbend/spark-operator:latest
+        ports:
+          - containerPort: 443
         name: manager
         resources:
           limits:

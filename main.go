@@ -14,8 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-//go:generate hack/update-codegen.sh
-
 package main
 
 import (
@@ -45,17 +43,16 @@ import (
 )
 
 var (
-	installCRDs       = flag.Bool("install-crds", true, "Whether to install CRDs")
-	controllerThreads = flag.Int("controller-threads", 10, "Number of worker threads used by the SparkApplication controller.")
-	resyncInterval    = flag.Int("resync-interval", 30, "Informer resync interval in seconds.")
-	namespace         = flag.String("namespace", apiv1.NamespaceAll, "The Kubernetes namespace(s) to manage. Will manage custom resource objects of the managed CRD types for the whole cluster if unset. Multiple namespace can be seperated with comma.")
-	enableWebhook     = flag.Bool("enable-webhook", false, "Whether to enable the mutating admission webhook for admitting and patching Spark pods.")
-	enableMetrics     = flag.Bool("enable-metrics", false, "Whether to enable the metrics endpoint.")
-	metricsPort       = flag.String("metrics-port", "10254", "Port for the metrics endpoint.")
-	metricsEndpoint   = flag.String("metrics-endpoint", "/metrics", "Metrics endpoint.")
-	metricsPrefix     = flag.String("metrics-prefix", "", "Prefix for the metrics.")
-	ingressUrlFormat  = flag.String("ingress-url-format", "", "Ingress URL format.")
-	setupLog          = ctrl.Log.WithName("setup")
+	installCRDs      = flag.Bool("install-crds", true, "Whether to install CRDs")
+	resyncInterval   = flag.Int("resync-interval", 30, "Informer resync interval in seconds.")
+	namespace        = flag.String("namespace", apiv1.NamespaceAll, "The Kubernetes namespace(s) to manage. Will manage custom resource objects of the managed CRD types for the whole cluster if unset. Multiple namespace can be seperated with comma.")
+	enableWebhook    = flag.Bool("enable-webhook", false, "Whether to enable the mutating admission webhook for admitting and patching Spark pods.")
+	enableMetrics    = flag.Bool("enable-metrics", false, "Whether to enable the metrics endpoint.")
+	metricsPort      = flag.String("metrics-port", "10254", "Port for the metrics endpoint.")
+	metricsEndpoint  = flag.String("metrics-endpoint", "/metrics", "Metrics endpoint.")
+	metricsPrefix    = flag.String("metrics-prefix", "", "Prefix for the metrics.")
+	ingressUrlFormat = flag.String("ingress-url-format", "", "Ingress URL format.")
+	setupLog         = ctrl.Log.WithName("setup")
 )
 
 func main() {

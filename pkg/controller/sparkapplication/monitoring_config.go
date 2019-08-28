@@ -17,13 +17,15 @@ limitations under the License.
 package sparkapplication
 
 import (
+	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/golang/glog"
 	corev1 "k8s.io/api/core/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
 
 	"github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/apis/sparkoperator.k8s.io/v1beta1"
@@ -38,7 +40,7 @@ const (
 	prometheusPathAnnotation   = "prometheus.io/path"
 )
 
-func configPrometheusMonitoring(app *v1beta1.SparkApplication, kubeClient clientset.Interface) error {
+func configPrometheusMonitoring(ctx context.Context, app *v1beta1.SparkApplication, client client.Client) error {
 	port := config.DefaultPrometheusJavaAgentPort
 	if app.Spec.Monitoring.Prometheus.Port != nil {
 		port = *app.Spec.Monitoring.Prometheus.Port
@@ -55,18 +57,21 @@ func configPrometheusMonitoring(app *v1beta1.SparkApplication, kubeClient client
 		configMapName := config.GetPrometheusConfigMapName(app)
 		configMap := buildPrometheusConfigMap(app, configMapName)
 		retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			cm, err := kubeClient.CoreV1().ConfigMaps(app.Namespace).Get(configMapName, metav1.GetOptions{})
+			namespacedName := types.NamespacedName{
+				Namespace: app.Namespace,
+				Name:      configMapName,
+			}
+			cm := &corev1.ConfigMap{}
+			err := client.Get(ctx, namespacedName, cm)
 			if apiErrors.IsNotFound(err) {
-				_, createErr := kubeClient.CoreV1().ConfigMaps(app.Namespace).Create(configMap)
-				return createErr
+				return client.Create(ctx, configMap)
 			}
 			if err != nil {
 				return err
 			}
 
 			cm.Data = configMap.Data
-			_, updateErr := kubeClient.CoreV1().ConfigMaps(app.Namespace).Update(cm)
-			return updateErr
+			return client.Update(ctx, cm)
 		})
 
 		if retryErr != nil {
