@@ -22,7 +22,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/golang/glog"
 	corev1 "k8s.io/api/core/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -49,11 +48,11 @@ func configPrometheusMonitoring(ctx context.Context, app *v1beta1.SparkApplicati
 	var javaOption string
 	if app.HasPrometheusConfigFile() {
 		configFile := *app.Spec.Monitoring.Prometheus.ConfigFile
-		glog.V(2).Infof("Overriding the default Prometheus configuration with config file %s in the Spark image.", configFile)
+		logger.V(2).Info("Overriding the default Prometheus configuration with config file in the Spark image.", "configFile", configFile)
 		javaOption = fmt.Sprintf("-javaagent:%s=%d:%s", app.Spec.Monitoring.Prometheus.JmxExporterJar,
 			port, configFile)
 	} else {
-		glog.V(2).Infof("Using the default Prometheus configuration.")
+		logger.V(2).Info("Using the default Prometheus configuration.")
 		configMapName := config.GetPrometheusConfigMapName(app)
 		configMap := buildPrometheusConfigMap(app, configMapName)
 		retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {

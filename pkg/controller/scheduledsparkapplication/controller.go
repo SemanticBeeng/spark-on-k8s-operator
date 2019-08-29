@@ -25,13 +25,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"reflect"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sort"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/robfig/cron"
 
 	"github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/apis/sparkoperator.k8s.io/v1beta1"
@@ -41,6 +41,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/clock"
 	"k8s.io/client-go/util/retry"
 )
+
+var logger = ctrl.Log.WithName("scheduledsparkapp-controller")
 
 // Add creates a new ScheduledSparkApplication Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
@@ -89,7 +91,8 @@ func (r *ReconcileScheduledSparkApplication) Reconcile(request reconcile.Request
 
 	schedule, err := cron.ParseStandard(ssparkapp.Spec.Schedule)
 	if err != nil {
-		glog.Errorf("failed to parse schedule %s of ScheduledSparkApplication %s/%s: %v", ssparkapp.Spec.Schedule, ssparkapp.Namespace, ssparkapp.Name, err)
+		logger.Error(err, "failed to parse schedule of ScheduledSparkApplication",
+			"schedule", ssparkapp.Spec.Schedule, "namespace", ssparkapp.Namespace, "name", ssparkapp.Name)
 		status.ScheduleState = v1beta1.FailedValidationState
 		status.Reason = err.Error()
 	} else {
@@ -108,7 +111,8 @@ func (r *ReconcileScheduledSparkApplication) Reconcile(request reconcile.Request
 				return reconcile.Result{}, err
 			}
 			if ok {
-				glog.Infof("Next run of ScheduledSparkApplication %s/%s is due, creating a new SparkApplication instance", ssparkapp.Namespace, ssparkapp.Name)
+				logger.Info("Next run of ScheduledSparkApplication is due, creating a new SparkApplication instance",
+					"namespace", ssparkapp.Namespace, "name", ssparkapp.Name)
 				name, err := r.startNextRun(ctx, ssparkapp, now)
 				if err != nil {
 					return reconcile.Result{}, err
@@ -181,7 +185,8 @@ func (r *ReconcileScheduledSparkApplication) shouldStartNextRun(ctx context.Cont
 func (r *ReconcileScheduledSparkApplication) startNextRun(ctx context.Context, app *v1beta1.ScheduledSparkApplication, now time.Time) (string, error) {
 	name, err := r.createSparkApplication(ctx, app, now)
 	if err != nil {
-		glog.Errorf("failed to create a SparkApplication instance for ScheduledSparkApplication %s/%s: %v", app.Namespace, app.Name, err)
+		logger.Error(err, "failed to create a SparkApplication instance for ScheduledSparkApplication",
+			"namespace", app.Namespace, "name", app.Name)
 		return "", err
 	}
 	return name, nil
@@ -259,14 +264,14 @@ func (r *ReconcileScheduledSparkApplication) checkAndUpdatePastRuns(
 	for _, name := range toDelete {
 		err := r.deleteScheduledSparkApplication(ctx, app.Namespace, name)
 		if err != nil {
-			glog.Warningf("failed to delete ScheduledSparkApplication %s/%s: %v", app.Namespace, app.Name, err)
+			logger.Error(err, "failed to delete ScheduledSparkApplication", "namespace", app.Namespace, "name", app.Name)
 		}
 	}
 	status.PastFailedRunNames, toDelete = bookkeepPastRuns(failedRuns, app.Spec.FailedRunHistoryLimit)
 	for _, name := range toDelete {
 		err = r.deleteScheduledSparkApplication(ctx, app.Namespace, name)
 		if err != nil {
-			glog.Warningf("failed to delete ScheduledSparkApplication %s/%s: %v", app.Namespace, app.Name, err)
+			logger.Error(err, "failed to delete ScheduledSparkApplication", "namespace", app.Namespace, "name", app.Name)
 		}
 	}
 

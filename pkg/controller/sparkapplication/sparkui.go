@@ -22,8 +22,6 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/golang/glog"
-
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -87,7 +85,7 @@ func createSparkUIIngress(ctx context.Context, app *v1beta1.SparkApplication, se
 			}},
 		},
 	}
-	glog.Infof("Creating an Ingress %s for the Spark UI for application %s", ingress.Name, app.Name)
+	logger.Info("Creating an Ingress for the Spark UI for application", "ingressName", ingress.Name, "appName", app.Name)
 	err := client.Create(ctx, &ingress)
 	if err != nil {
 		return nil, err
@@ -127,7 +125,7 @@ func createSparkUIService(ctx context.Context, client client.Client, app *v1beta
 		},
 	}
 
-	glog.Infof("Creating a service %s for the Spark UI for application %s", service.Name, app.Name)
+	logger.Info("Creating a service for the Spark UI for application", "serviceName", service.Name, "appName", app.Name)
 	err = client.Create(ctx, service)
 	if err != nil {
 		return nil, err

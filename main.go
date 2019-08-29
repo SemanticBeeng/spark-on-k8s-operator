@@ -20,7 +20,6 @@ import (
 	"flag"
 	"github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/apis"
 	"github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/controller"
-	"github.com/golang/glog"
 	apiv1 "k8s.io/api/core/v1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
@@ -52,7 +51,7 @@ var (
 	metricsEndpoint  = flag.String("metrics-endpoint", "/metrics", "Metrics endpoint.")
 	metricsPrefix    = flag.String("metrics-prefix", "", "Prefix for the metrics.")
 	ingressUrlFormat = flag.String("ingress-url-format", "", "Ingress URL format.")
-	setupLog         = ctrl.Log.WithName("setup")
+	logger           = ctrl.Log.WithName("main")
 )
 
 func main() {
@@ -65,7 +64,7 @@ func main() {
 	// Create the client config. Use kubeConfig if given, otherwise assume in-cluster.
 	config, err := ctrl.GetConfig()
 	if err != nil {
-		glog.Fatal(err)
+		logger.Error(err, "Error getting kubeconfig")
 	}
 
 	var metricConfig *util.MetricConfig
@@ -77,32 +76,32 @@ func main() {
 			MetricsLabels:   metricsLabels,
 		}
 
-		glog.Info("Enabling metrics collecting and exporting to Prometheus")
+		logger.Info("Enabling metrics collecting and exporting to Prometheus")
 		util.InitializeMetrics(metricConfig)
 	}
 
 	ctrl.SetLogger(zap.Logger(true))
-	setupLog.Info("Starting the Spark Operator")
+	logger.Info("Starting the Spark Operator")
 
 	apiExtensionsClient, err := apiextensionsclient.NewForConfig(config)
 	if err != nil {
-		setupLog.Error(err, "Unable to get a client")
+		logger.Error(err, "Unable to get a client")
 	}
 
 	if *installCRDs {
 		err = crd.CreateOrUpdateCRD(apiExtensionsClient, sacrd.GetCRD())
 		if err != nil {
-			glog.Fatalf("failed to create or update CustomResourceDefinition %s: %v", sacrd.FullName, err)
+			logger.Error(err, "failed to create or update CustomResourceDefinition", "SparkAppCRD Name", sacrd.FullName)
 		}
 
 		err = crd.CreateOrUpdateCRD(apiExtensionsClient, ssacrd.GetCRD())
 		if err != nil {
-			glog.Fatalf("failed to create or update CustomResourceDefinition %s: %v", ssacrd.FullName, err)
+			logger.Error(err, "failed to create or update CustomResourceDefinition", "ScheduledSparkAppCRD Name", ssacrd.FullName)
 		}
 	}
 
 	// Create a new Cmd to provide shared dependencies and start components
-	glog.Info("Setting up the controller runtime manager")
+	logger.Info("Setting up the controller runtime manager")
 	syncPeriodDuration := time.Duration(*resyncInterval) * time.Second
 
 	var mgr manager.Manager
@@ -120,43 +119,43 @@ func main() {
 	}
 
 	if err != nil {
-		glog.Error(err, "unable to set up overall controller manager")
+		logger.Error(err, "unable to set up overall controller manager")
 		os.Exit(1)
 	}
 
-	setupLog.Info("Registering Components.")
+	logger.Info("Registering Components.")
 
 	// Setup Scheme for all resources
 	if err := apis.AddToScheme(mgr.GetScheme()); err != nil {
-		glog.Error(err, "Unable to register the reuqired schemes")
+		logger.Error(err, "Unable to register the reuqired schemes")
 		os.Exit(1)
 	}
 
 	// Setup all Controllers
-	setupLog.Info("Adding Controllers.")
+	logger.Info("Adding Controllers.")
 	if err := controller.AddToManager(mgr, metricConfig); err != nil {
-		glog.Error(err, "Unable to add the controllers")
+		logger.Error(err, "Unable to add the controllers")
 		os.Exit(1)
 	}
 
 	if *enableWebhook {
-		setupLog.Info("Setting up webhooks")
+		logger.Info("Setting up webhooks")
 		if err := wb.AddToManager(mgr); err != nil {
-			glog.Error(err, "unable to register webhooks to the manager")
+			logger.Error(err, "unable to register webhooks to the manager")
 			os.Exit(1)
 		}
 
 		// +kubebuilder:scaffold:builder
 
-		setupLog.Info("Getting the webhook server")
+		logger.Info("Getting the webhook server")
 		hookServer := mgr.GetWebhookServer()
 		hookServer.Register("/mutate-v1-pod", &webhook.Admission{Handler: &wb.SparkPodMutator{JobNameSpace: *namespace}})
 	}
 
 	//Start the Cmd
-	setupLog.Info("Starting the Cmd.")
+	logger.Info("Starting the Cmd.")
 	if err := mgr.Start(signals.SetupSignalHandler()); err != nil {
-		glog.Error(err, "unable to run the manager")
+		logger.Error(err, "unable to run the manager")
 		os.Exit(1)
 	}
 }

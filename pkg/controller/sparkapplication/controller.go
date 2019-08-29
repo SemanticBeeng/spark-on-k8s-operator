@@ -23,7 +23,7 @@ import (
 	v1beta12 "k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"os/exec"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -32,7 +32,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/google/uuid"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -43,10 +42,11 @@ import (
 	"github.com/lyft/flytestdlib/contextutils"
 
 	"github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/apis/sparkoperator.k8s.io/v1beta1"
-	crdclientset "github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/client/clientset/versioned"
 	"github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/config"
 	"github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/util"
 )
+
+var logger = ctrl.Log.WithName("sparkapp-controller")
 
 const (
 	sparkExecutorIDLabel      = "spark-exec-id"
@@ -58,10 +58,6 @@ const (
 	Service    = "Service"
 	Endpoints  = "Endpoints"
 	Ingress    = "Ingress"
-)
-
-var (
-	execCommand = exec.Command
 )
 
 // Add creates a new SparkApplication Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
@@ -98,8 +94,9 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 func newReconciler(mgr manager.Manager, metricsConfig *util.MetricConfig) reconcile.Reconciler {
 	reconciler := &ReconcileSparkApplication{
-		client: mgr.GetClient(),
-		scheme: mgr.GetScheme(),
+		client:   mgr.GetClient(),
+		scheme:   mgr.GetScheme(),
+		recorder: mgr.GetEventRecorderFor("spark-operator"),
 	}
 
 	if metricsConfig != nil {
@@ -117,7 +114,6 @@ type ReconcileSparkApplication struct {
 	scheme           *runtime.Scheme
 	metrics          *sparkAppMetrics
 	recorder         record.EventRecorder
-	crdClient        crdclientset.Interface
 	ingressURLFormat string
 }
 
@@ -204,7 +200,7 @@ func (r *ReconcileSparkApplication) recordExecutorEvent(app *v1beta1.SparkApplic
 func (r *ReconcileSparkApplication) submitSparkApplication(ctx context.Context, app *v1beta1.SparkApplication) *v1beta1.SparkApplication {
 	if app.PrometheusMonitoringEnabled() {
 		if err := configPrometheusMonitoring(ctx, app, r.client); err != nil {
-			glog.Error(err)
+			logger.Error(err, "Error in configuring Prometheus monitoring")
 		}
 	}
 
@@ -235,7 +231,8 @@ func (r *ReconcileSparkApplication) submitSparkApplication(ctx context.Context, 
 			LastSubmissionAttemptTime: metav1.Now(),
 		}
 		r.recordSparkApplicationEvent(app)
-		glog.Errorf("failed to run spark-submit for SparkApplication %s/%s: %v", app.Namespace, app.Name, err)
+		logger.Error(err, "failed to run spark-submit for SparkApplication",
+			"appNamespace", app.Namespace, "appName", app.Name)
 		return app
 	}
 	if !submitted {
@@ -245,7 +242,7 @@ func (r *ReconcileSparkApplication) submitSparkApplication(ctx context.Context, 
 		return app
 	}
 
-	glog.Infof("SparkApplication %s/%s has been submitted", app.Namespace, app.Name)
+	logger.Info("SparkApplication has been submitted", "appNamespace", app.Namespace, "appName", app.Name)
 	app.Status = v1beta1.SparkApplicationStatus{
 		SubmissionID: submissionID,
 		AppState: v1beta1.ApplicationState{
@@ -262,7 +259,8 @@ func (r *ReconcileSparkApplication) submitSparkApplication(ctx context.Context, 
 
 	service, err := createSparkUIService(ctx, r.client, app)
 	if err != nil {
-		glog.Errorf("failed to create UI service for SparkApplication %s/%s: %v", app.Namespace, app.Name, err)
+		logger.Error(err, "failed to create UI service for SparkApplication",
+			"appNamespace", app.Namespace, "appName", app.Name)
 	} else {
 		app.Status.DriverInfo.WebUIServiceName = service.serviceName
 		app.Status.DriverInfo.WebUIPort = service.servicePort
@@ -271,7 +269,8 @@ func (r *ReconcileSparkApplication) submitSparkApplication(ctx context.Context, 
 		if r.ingressURLFormat != "" {
 			ingress, err := createSparkUIIngress(ctx, app, *service, r.ingressURLFormat, r.client)
 			if err != nil {
-				glog.Errorf("failed to create UI Ingress for SparkApplication %s/%s: %v", app.Namespace, app.Name, err)
+				logger.Error(err, "failed to create UI Ingress for SparkApplication",
+					"appNamespace", app.Namespace, "appName", app.Name)
 			} else {
 				app.Status.DriverInfo.WebUIIngressAddress = ingress.ingressURL
 				app.Status.DriverInfo.WebUIIngressName = ingress.ingressName
@@ -282,6 +281,7 @@ func (r *ReconcileSparkApplication) submitSparkApplication(ctx context.Context, 
 }
 
 func (r *ReconcileSparkApplication) updateApplicationStatusWithRetries(
+	ctx context.Context,
 	original *v1beta1.SparkApplication,
 	updateFunc func(status *v1beta1.SparkApplicationStatus)) (*v1beta1.SparkApplication, error) {
 	toUpdate := original.DeepCopy()
@@ -292,7 +292,8 @@ func (r *ReconcileSparkApplication) updateApplicationStatusWithRetries(
 		if equality.Semantic.DeepEqual(original.Status, toUpdate.Status) {
 			return toUpdate, nil
 		}
-		_, err := r.crdClient.SparkoperatorV1beta1().SparkApplications(toUpdate.Namespace).Update(toUpdate)
+
+		err := r.client.Update(ctx, toUpdate)
 		if err == nil {
 			return toUpdate, nil
 		}
@@ -301,17 +302,15 @@ func (r *ReconcileSparkApplication) updateApplicationStatusWithRetries(
 
 		// Failed to update to the API server.
 		// Get the latest version from the API server first and re-apply the update.
-		name := toUpdate.Name
-		toUpdate, err = r.crdClient.SparkoperatorV1beta1().SparkApplications(toUpdate.Namespace).Get(name,
-			metav1.GetOptions{})
+		toUpdate, err = r.getSparkApplication(ctx, toUpdate.Namespace, toUpdate.Name)
 		if err != nil {
-			glog.Errorf("failed to get SparkApplication %s/%s: %v", original.Namespace, name, err)
+			logger.Error(err, "failed to get SparkApplication", "namespace", original.Namespace, "name", toUpdate.Name)
 			return nil, err
 		}
 	}
 
 	if lastUpdateErr != nil {
-		glog.Errorf("failed to update SparkApplication %s/%s: %v", original.Namespace, original.Name, lastUpdateErr)
+		logger.Error(lastUpdateErr, "failed to update SparkApplication", "namespace", original.Namespace, "name", original.Name)
 		return nil, lastUpdateErr
 	}
 
@@ -319,13 +318,13 @@ func (r *ReconcileSparkApplication) updateApplicationStatusWithRetries(
 }
 
 // updateStatusAndExportMetrics updates the status of the SparkApplication and export the metrics.
-func (r *ReconcileSparkApplication) updateStatusAndExportMetrics(oldApp, newApp *v1beta1.SparkApplication) error {
+func (r *ReconcileSparkApplication) updateStatusAndExportMetrics(ctx context.Context, oldApp, newApp *v1beta1.SparkApplication) error {
 	// Skip update if nothing changed.
 	if equality.Semantic.DeepEqual(oldApp, newApp) {
 		return nil
 	}
 
-	updatedApp, err := r.updateApplicationStatusWithRetries(oldApp, func(status *v1beta1.SparkApplicationStatus) {
+	updatedApp, err := r.updateApplicationStatusWithRetries(ctx, oldApp, func(status *v1beta1.SparkApplicationStatus) {
 		*status = newApp.Status
 	})
 
@@ -357,7 +356,7 @@ func (r *ReconcileSparkApplication) getSparkApplication(ctx context.Context, nam
 func (r *ReconcileSparkApplication) deleteSparkResources(ctx context.Context, app *v1beta1.SparkApplication) error {
 	driverPodName := app.Status.DriverInfo.PodName
 	if driverPodName != "" {
-		glog.V(2).Infof("Deleting pod %s in namespace %s", driverPodName, app.Namespace)
+		logger.V(2).Info("Deleting pod in namespace", "podName", driverPodName, "namespace", app.Namespace)
 		pod, err := r.getDriverPod(ctx, app)
 		if err != nil && !errors.IsNotFound(err) {
 			return err
@@ -370,7 +369,7 @@ func (r *ReconcileSparkApplication) deleteSparkResources(ctx context.Context, ap
 
 	sparkUIServiceName := app.Status.DriverInfo.WebUIServiceName
 	if sparkUIServiceName != "" {
-		glog.V(2).Infof("Deleting Spark UI Service %s in namespace %s", sparkUIServiceName, app.Namespace)
+		logger.V(2).Info("Deleting Spark UI Service in namespace", "serviceName", sparkUIServiceName, "namespace", app.Namespace)
 		namespacedName := types.NamespacedName{
 			Namespace: app.Namespace,
 			Name:      sparkUIServiceName,
@@ -389,7 +388,7 @@ func (r *ReconcileSparkApplication) deleteSparkResources(ctx context.Context, ap
 
 	sparkUIIngressName := app.Status.DriverInfo.WebUIIngressName
 	if sparkUIIngressName != "" {
-		glog.V(2).Infof("Deleting Spark UI Ingress %s in namespace %s", sparkUIIngressName, app.Namespace)
+		logger.V(2).Info("Deleting Spark UI Ingress in namespace", "ingressName", sparkUIIngressName, "namespace", app.Namespace)
 		namespacedName := types.NamespacedName{
 			Namespace: app.Namespace,
 			Name:      sparkUIIngressName,
@@ -502,12 +501,12 @@ func (r *ReconcileSparkApplication) Reconcile(request reconcile.Request) (reconc
 	}
 
 	appToUpdate := sparkapp.DeepCopy()
-	glog.Infof("Current Spark app state: %s", appToUpdate.Status.AppState.State)
+	logger.Info("Current Spark app state", "appState", appToUpdate.Status.AppState.State)
 
 	switch appToUpdate.Status.AppState.State {
 	case v1beta1.NewState:
 		v1beta1.SetSparkApplicationDefaults(appToUpdate)
-		glog.Infof("SparkApplication %s/%s was added", appToUpdate.Namespace, appToUpdate.Name)
+		logger.Info("SparkApplication was added", "namespace", appToUpdate.Namespace, "name", appToUpdate.Name)
 		r.recordSparkApplicationEvent(appToUpdate)
 		if err := r.validateSparkApplication(appToUpdate); err != nil {
 			appToUpdate.Status.AppState.State = v1beta1.FailedState
@@ -522,8 +521,8 @@ func (r *ReconcileSparkApplication) Reconcile(request reconcile.Request) (reconc
 			r.recordSparkApplicationEvent(appToUpdate)
 		} else {
 			if err := r.deleteSparkResources(ctx, appToUpdate); err != nil {
-				glog.Errorf("failed to delete resources associated with SparkApplication %s/%s: %v",
-					appToUpdate.Namespace, appToUpdate.Name, err)
+				logger.Error(err, "failed to delete resources associated with SparkApplication",
+					"namespace", appToUpdate.Namespace, "name", appToUpdate.Name)
 				return reconcile.Result{}, err
 			}
 			appToUpdate.Status.AppState.State = v1beta1.PendingRerunState
@@ -535,8 +534,8 @@ func (r *ReconcileSparkApplication) Reconcile(request reconcile.Request) (reconc
 			r.recordSparkApplicationEvent(appToUpdate)
 		} else if hasRetryIntervalPassed(appToUpdate.Spec.RestartPolicy.OnFailureRetryInterval, appToUpdate.Status.ExecutionAttempts, appToUpdate.Status.TerminationTime) {
 			if err := r.deleteSparkResources(ctx, appToUpdate); err != nil {
-				glog.Errorf("failed to delete resources associated with SparkApplication %s/%s: %v",
-					appToUpdate.Namespace, appToUpdate.Name, err)
+				logger.Error(err, "failed to delete resources associated with SparkApplication",
+					"namespace", appToUpdate.Namespace, "name", appToUpdate.Name)
 				return reconcile.Result{}, err
 			}
 			appToUpdate.Status.AppState.State = v1beta1.PendingRerunState
@@ -552,16 +551,16 @@ func (r *ReconcileSparkApplication) Reconcile(request reconcile.Request) (reconc
 	case v1beta1.InvalidatingState:
 		// Invalidate the current run and enqueue the SparkApplication for re-execution.
 		if err := r.deleteSparkResources(ctx, appToUpdate); err != nil {
-			glog.Errorf("failed to delete resources associated with SparkApplication %s/%s: %v",
-				appToUpdate.Namespace, appToUpdate.Name, err)
+			logger.Error(err, "failed to delete resources associated with SparkApplication",
+				"namespace", appToUpdate.Namespace, "name", appToUpdate.Name)
 			return reconcile.Result{}, err
 		}
 		r.clearStatus(&appToUpdate.Status)
 		appToUpdate.Status.AppState.State = v1beta1.PendingRerunState
 	case v1beta1.PendingRerunState:
-		glog.V(2).Infof("SparkApplication %s/%s pending rerun", appToUpdate.Namespace, appToUpdate.Name)
+		logger.V(2).Info("SparkApplication pending rerun", "namespace", appToUpdate.Namespace, "name", appToUpdate.Name)
 		if r.validateSparkResourceDeletion(ctx, appToUpdate) {
-			glog.V(2).Infof("Resources for SparkApplication %s/%s successfully deleted", appToUpdate.Namespace, appToUpdate.Name)
+			logger.V(2).Info("Resources for SparkApplication successfully deleted", "namespace", appToUpdate.Namespace, "name", appToUpdate.Name)
 			r.recordSparkApplicationEvent(appToUpdate)
 			r.clearStatus(&appToUpdate.Status)
 			appToUpdate = r.submitSparkApplication(ctx, appToUpdate)
@@ -573,10 +572,11 @@ func (r *ReconcileSparkApplication) Reconcile(request reconcile.Request) (reconc
 	}
 
 	if appToUpdate != nil {
-		glog.V(2).Infof("Trying to update SparkApplication %s/%s, from: [%v] to [%v]", sparkapp.Namespace, sparkapp.Name, sparkapp.Status, appToUpdate.Status)
-		err = r.updateStatusAndExportMetrics(sparkapp, appToUpdate)
+		logger.V(2).Info("Trying to update SparkApplication", "namespace", sparkapp.Namespace, "name", sparkapp.Name,
+			"fromStatus", sparkapp.Status, "toStatus", appToUpdate.Status)
+		err = r.updateStatusAndExportMetrics(ctx, sparkapp, appToUpdate)
 		if err != nil {
-			glog.Errorf("failed to update SparkApplication %s/%s: %v", appToUpdate.Namespace, appToUpdate.Name, err)
+			logger.Error(err, "failed to update SparkApplication", "namespace", appToUpdate.Namespace, "name", appToUpdate.Name)
 			return reconcile.Result{}, err
 		}
 	}
@@ -710,7 +710,7 @@ func (r *ReconcileSparkApplication) getAndUpdateExecutorState(ctx context.Contex
 	for name, oldStatus := range app.Status.ExecutorState {
 		_, exists := executorStateMap[name]
 		if !isExecutorTerminated(oldStatus) && !exists {
-			glog.Infof("Executor pod %s not found, assuming it was deleted.", name)
+			logger.Info("Executor pod not found, assuming it was deleted.", "podName", name)
 			app.Status.ExecutorState[name] = v1beta1.ExecutorFailedState
 		}
 	}
@@ -731,7 +731,8 @@ func (r *ReconcileSparkApplication) getAndUpdateAppState(ctx context.Context, ap
 func (r *ReconcileSparkApplication) handleSparkApplicationDeletion(ctx context.Context, app *v1beta1.SparkApplication) {
 	// SparkApplication deletion requested, lets delete driver pod.
 	if err := r.deleteSparkResources(ctx, app); err != nil {
-		glog.Errorf("failed to delete resources associated with deleted SparkApplication %s/%s: %v", app.Namespace, app.Name, err)
+		logger.Error(err, "failed to delete resources associated with deleted SparkApplication",
+			"namespace", app.Namespace, "name", app.Name)
 	}
 }
 
@@ -801,7 +802,8 @@ func shouldRetry(app *v1beta1.SparkApplication) bool {
 
 // Helper func to determine if we have waited enough to retry the SparkApplication.
 func hasRetryIntervalPassed(retryInterval *int64, attemptsDone int32, lastEventTime metav1.Time) bool {
-	glog.V(3).Infof("retryInterval: %d , lastEventTime: %v, attempsDone: %d", retryInterval, lastEventTime, attemptsDone)
+	logger.V(3).Info("Retry info",
+		"retryInterval", retryInterval, "lastEventTime", lastEventTime, "attemptsDone", attemptsDone)
 	if retryInterval == nil || lastEventTime.IsZero() || attemptsDone <= 0 {
 		return false
 	}
@@ -809,7 +811,7 @@ func hasRetryIntervalPassed(retryInterval *int64, attemptsDone int32, lastEventT
 	// Retry if we have waited at-least equal to attempts*RetryInterval since we do a linear back-off.
 	interval := time.Duration(*retryInterval) * time.Second * time.Duration(attemptsDone)
 	currentTime := time.Now()
-	glog.V(3).Infof("currentTime is %v, interval is %v", currentTime, interval)
+	logger.V(3).Info("Retry info", "currentTime", currentTime, "interval", interval)
 	if currentTime.After(lastEventTime.Add(interval)) {
 		return true
 	}
