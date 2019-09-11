@@ -27,6 +27,8 @@ spec:
     shortNames:
       - sparkapp
     singular: sparkapplication
+  subresources:
+    status: {}
   scope: Namespaced
   validation:
     openAPIV3Schema:

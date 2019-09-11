@@ -68,6 +68,7 @@ rules:
   - sparkoperator.k8s.io
   resources:
   - sparkapplications
+  - sparkapplications/finalizers
   verbs:
   - get
   - list
@@ -279,11 +280,11 @@ spec:
           protocol: TCP
         resources:
           limits:
-            cpu: 100m
-            memory: 30Mi
+            cpu: 2
+            memory: 1G
           requests:
-            cpu: 100m
-            memory: 20Mi
+            cpu: 2
+            memory: 1G
         volumeMounts:
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: cert

@@ -14,11 +14,11 @@ endif
 all: manager
 
 # Run tests
-test: fmt vet
+test: generate fmt vet
 	go test ./pkg/apis/... ./pkg/controller/... -coverprofile cover.out
 
 # Build manager binary
-manager: fmt vet
+manager: generate fmt vet
 	go build -o bin/manager main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
@@ -52,7 +52,7 @@ ifndef GOPATH
 	$(error GOPATH not defined, please define GOPATH. Run "go help gopath" to learn more about GOPATH)
 endif
 	go generate ./...
-	./hack/update-codegen.sh
+# 	./hack/update-codegen.sh
 
 # Build the docker image
 docker-build: test

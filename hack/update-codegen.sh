@@ -26,7 +26,7 @@ CODEGEN_PKG=${CODEGEN_PKG:-$(cd ${SCRIPT_ROOT}; ls -d -1 ./vendor/k8s.io/code-ge
 #                  k8s.io/kubernetes. The output-base is needed for the generators to output into the vendor dir
 #                  instead of the $GOPATH directly. For normal projects this can be dropped.
 echo $CODEGEN_PKG
-${CODEGEN_PKG}/generate-groups.sh "all" \
+bash ${CODEGEN_PKG}/generate-groups.sh deepcopy,defaulter,client,lister \
   github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/client github.com/GoogleCloudPlatform/spark-on-k8s-operator/pkg/apis \
   sparkoperator.k8s.io:v1alpha1,v1beta1 \
   --go-header-file "$(dirname ${BASH_SOURCE})/custom-boilerplate.go.txt" \

@@ -255,6 +255,20 @@ func (r *ReconcileSparkApplication) submitSparkApplication(ctx context.Context, 
 		ExecutionAttempts:         app.Status.ExecutionAttempts + 1,
 		LastSubmissionAttemptTime: metav1.Now(),
 	}
+	driverPod, err := r.getDriverPod(ctx, app)
+	if err != nil {
+		logger.Error(err, "Unable to get driver pod in order to set owner reference")
+	} else {
+		if err = ctrl.SetControllerReference(app, driverPod, r.scheme); err != nil {
+			logger.Error(err, "Setting owner reference of driver pod failed")
+		} else {
+			if err = r.client.Update(ctx, driverPod); err != nil {
+				logger.Error(err, "Failed to update driver pod with owner reference at the K8s API server")
+			} else {
+				logger.Info("driverPod updated with owner reference at the K8s API server", "appNamespace", app.Namespace, "appName", app.Name)
+			}
+		}
+	}
 	r.recordSparkApplicationEvent(app)
 
 	service, err := createSparkUIService(ctx, r.client, app)

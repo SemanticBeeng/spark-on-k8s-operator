@@ -22,7 +22,7 @@
 
 ARG SPARK_IMAGE=lightbend/spark:2.1.1-OpenShift-2.4.3-rh
 
-FROM golang:1.12.9-alpine as builder
+FROM golang:1.13.0-alpine as builder
 ARG DEP_VERSION="0.5.4"
 RUN apk add --no-cache bash git 
 WORKDIR /tmp/github.com/GoogleCloudPlatform/spark-on-k8s-operator

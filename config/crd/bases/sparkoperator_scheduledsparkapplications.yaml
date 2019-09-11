@@ -27,6 +27,8 @@ spec:
     shortNames:
       - scheduledsparkapp
     singular: scheduledsparkapplication
+  subresources:
+    status: {}
   scope: Namespaced
   validation:
     openAPIV3Schema:
