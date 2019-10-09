@@ -73,7 +73,7 @@ func New(ns, sparkNs, kubeconfig, opImage string, opImagePullPolicy string) (*Fr
 		KubeClient:             cli,
 		SparkApplicationClient: saClient,
 		Namespace:              namespace,
-		DefaultTimeout:         time.Minute,
+		DefaultTimeout:         5 * time.Minute,
 	}
 
 	err = f.Setup(sparkNs, opImage, opImagePullPolicy)
