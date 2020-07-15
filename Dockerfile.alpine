@@ -1,0 +1,31 @@
+
+ARG SPARK_IMAGE=lightbend/spark:2.0.6-cloudflow-spark-2.4.5-scala-2.12
+
+FROM golang:1.14.4-alpine as builder
+
+WORKDIR /workspace
+
+# Copy the Go Modules manifests
+COPY go.mod go.mod
+COPY go.sum go.sum
+# Cache deps before building and copying source so that we don't need to re-download as much
+# and so that source changes don't invalidate our downloaded layer
+RUN go mod download
+
+# Copy the go source code
+COPY main.go main.go
+COPY pkg/ pkg/
+
+# Build
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o /usr/bin/spark-operator main.go
+
+FROM ${SPARK_IMAGE}
+
+USER root
+COPY --from=builder /usr/bin/spark-operator /usr/bin/
+RUN apk add openssl curl tini \
+    && rm -rf /var/lib/apt/lists/*
+COPY hack/gencerts.sh /usr/bin/
+
+COPY entrypoint-alpine.sh /usr/bin/entrypoint.sh
+ENTRYPOINT ["bash", "/usr/bin/entrypoint.sh"]
